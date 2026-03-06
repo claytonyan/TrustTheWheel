@@ -146,7 +146,19 @@ function computeStats(trades, capitalBase, taxRate) {
   const rocPct = capitalBase > 0 ? (realizedPnl / capitalBase) * 100 : 0;
   const taxLiability = realizedPnl > 0 ? realizedPnl * (taxRate / 100) : 0;
   const afterTaxPnl = realizedPnl - taxLiability;
-  return { totalPremium, realizedPnl, capitalDeployed, openCount: open.length, rocPct, taxLiability, afterTaxPnl };
+
+  // Annualized ROC: scale realized ROC to a full year based on days since first trade
+  let annualizedRoc = 0;
+  if (capitalBase > 0 && trades.length > 0) {
+    const dates = trades.map(t => t.openDate).filter(Boolean).map(d => new Date(d)).filter(d => !isNaN(d));
+    if (dates.length > 0) {
+      const earliest = new Date(Math.min(...dates));
+      const daysElapsed = Math.max(1, (Date.now() - earliest) / 86400000);
+      annualizedRoc = (realizedPnl / capitalBase) * (365 / daysElapsed) * 100;
+    }
+  }
+
+  return { totalPremium, realizedPnl, capitalDeployed, openCount: open.length, rocPct, annualizedRoc, taxLiability, afterTaxPnl };
 }
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -478,9 +490,9 @@ export default function App() {
         select option { background: ${G.surface}; color: ${G.text}; }
         .trow:hover td { background: #0c1520 !important; }
         input[type=number]::-webkit-inner-spin-button { opacity: 0.3; }
-        .stats-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 26px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px; margin-bottom: 26px; }
         .body-grid { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
-        @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
+        @media (max-width: 1400px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
         @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
         @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .body-grid { grid-template-columns: 1fr; } }
       `}</style>
@@ -555,6 +567,7 @@ export default function App() {
             <StatCard label="Est. Tax Liability" value={`-$${stats.taxLiability.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub={`at ${taxRate}% rate`} color={G.red} top={G.red} />
             <StatCard label="After-Tax P&L" value={`${stats.afterTaxPnl >= 0 ? "+" : ""}$${stats.afterTaxPnl.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub="net profit" color={stats.afterTaxPnl >= 0 ? G.accent : G.red} top={G.accent} />
             <StatCard label="Return on Capital" value={`${stats.rocPct >= 0 ? "+" : ""}${stats.rocPct.toFixed(2)}%`} sub={`on $${capital.toLocaleString()} base`} color={stats.rocPct >= 0 ? G.accent : G.red} top={G.blue} />
+            <StatCard label="Annualized ROC" value={`${stats.annualizedRoc >= 0 ? "+" : ""}${stats.annualizedRoc.toFixed(1)}%`} sub="projected / yr" color={stats.annualizedRoc >= 0 ? G.accent : G.red} top={G.blue} />
             <StatCard label="Capital Deployed" value={`$${(stats.capitalDeployed/1000).toFixed(1)}k`} sub={`${stats.openCount} open legs`} color={G.amber} top={G.amber} />
             <StatCard label="Open Positions" value={stats.openCount} sub={`${trades.filter(t=>t.type==="PUT"&&t.status==="open").length}P · ${trades.filter(t=>t.type==="CALL"&&t.status==="open").length}C`} color={G.blue} top={G.blue} />
           </div>
