@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 const LS_TRADES = "wheeldeskv1_trades";
 const LS_CAPITAL = "wheeldeskv1_capital";
 const LS_TAX_RATE = "wheeldeskv1_taxrate";
+const LS_IMPORTS = "wheeldeskv1_imports";
 const lsGet = (key, fallback) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
 const lsSet = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
 
@@ -311,6 +312,42 @@ function CloseModal({ trade, onClose, onSave }) {
 }
 
 
+function ImportHistoryModal({ imports, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000cc", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={onClose}>
+      <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 10, width: 520, maxHeight: "70vh", display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: G.text }}>Imported Files</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: G.muted, fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>✕</button>
+        </div>
+        {/* List */}
+        <div style={{ overflowY: "auto", flex: 1 }}>
+          {imports.length === 0 ? (
+            <div style={{ padding: "40px 20px", textAlign: "center", color: G.muted, fontFamily: mono, fontSize: 11 }}>No files imported yet</div>
+          ) : (
+            [...imports].reverse().map((imp, i) => (
+              <div key={imp.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 20px", borderBottom: `1px solid ${G.border}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ fontSize: 16, opacity: 0.5 }}>📄</div>
+                  <div>
+                    <div style={{ fontFamily: mono, fontSize: 12, color: G.text, fontWeight: 500 }}>{imp.filename}</div>
+                    <div style={{ fontFamily: mono, fontSize: 10, color: G.muted, marginTop: 2 }}>{imp.date}</div>
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: G.accent }}>{imp.tradeCount} trade{imp.tradeCount !== 1 ? "s" : ""}</div>
+                  {imp.closerCount > 0 && <div style={{ fontFamily: mono, fontSize: 10, color: G.muted, marginTop: 1 }}>{imp.closerCount} updated</div>}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── App ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [trades, setTrades] = useState(() => lsGet(LS_TRADES, []));
@@ -318,12 +355,15 @@ export default function App() {
   const [closing, setClosing] = useState(null);
   const [capital, setCapital] = useState(() => lsGet(LS_CAPITAL, 50000));
   const [taxRate, setTaxRate] = useState(() => lsGet(LS_TAX_RATE, 30));
+  const [imports, setImports] = useState(() => lsGet(LS_IMPORTS, []));
+  const [viewImports, setViewImports] = useState(false);
   const [toast, setToast] = useState(null);
   const csvInputRef = useRef();
 
   useEffect(() => { lsSet(LS_TRADES, trades); }, [trades]);
   useEffect(() => { lsSet(LS_CAPITAL, capital); }, [capital]);
   useEffect(() => { lsSet(LS_TAX_RATE, taxRate); }, [taxRate]);
+  useEffect(() => { lsSet(LS_IMPORTS, imports); }, [imports]);
 
   const showToast = useCallback((msg, ok = true) => {
     setToast({ msg, ok });
@@ -373,6 +413,13 @@ export default function App() {
         const { trades: imported, closers, errors } = parseFidelityCSV(e.target.result);
         if (errors.length && !imported.length && !closers.length) { showToast(errors[0], false); return; }
         importTrades(imported, closers);
+        setImports(prev => [...prev, {
+          id: Date.now(),
+          filename: file.name,
+          date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
+          tradeCount: imported.length,
+          closerCount: closers.length,
+        }]);
         showToast(`Imported ${imported.length} trade${imported.length !== 1 ? "s" : ""}${closers.length ? `, updated ${closers.length} existing` : ""}`);
       } catch (err) {
         showToast(`Parse error: ${err.message}`, false);
@@ -465,6 +512,9 @@ export default function App() {
               </div>
             </div>
             <div style={{ width: 1, height: 16, background: G.border }} />
+            <button onClick={() => setViewImports(true)}
+              style={{ background: "#0a1a2a", border: `1px solid ${G.border}`, color: G.muted, padding: "5px 12px", borderRadius: 5, fontSize: 9.5, fontFamily: mono, cursor: "pointer", letterSpacing: "0.06em" }}
+            >VIEW IMPORTED {imports.length > 0 && <span style={{ background: G.border, color: G.text, borderRadius: 3, padding: "1px 5px", marginLeft: 4, fontSize: 9 }}>{imports.length}</span>}</button>
             <input ref={csvInputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={e => { handleCSVFile(e.target.files[0]); e.target.value = ""; }} />
             <button onClick={() => csvInputRef.current.click()}
               style={{ background: "#0a1a2a", border: `1px solid ${G.blue}50`, color: G.blue, padding: "5px 12px", borderRadius: 5, fontSize: 9.5, fontFamily: mono, cursor: "pointer", letterSpacing: "0.06em" }}
@@ -606,6 +656,7 @@ export default function App() {
       </div>
 
       {closing && <CloseModal trade={closing} onClose={() => setClosing(null)} onSave={closeTrade} />}
+      {viewImports && <ImportHistoryModal imports={imports} onClose={() => setViewImports(false)} />}
     </>
   );
 }
