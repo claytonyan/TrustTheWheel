@@ -140,9 +140,15 @@ function daysUntil(dateStr) {
 function computeStats(trades, capitalBase, taxRate) {
   const open = trades.filter(t => t.status === "open");
   const closed = trades.filter(t => t.status !== "open");
+  const assigned = trades.filter(t => t.status === "assigned");
   const totalPremium = trades.reduce((s, t) => s + (t.premiumCollected || 0), 0);
   const realizedPnl = closed.reduce((s, t) => s + (t.realizedPnl || 0), 0);
-  const capitalDeployed = open.reduce((s, t) => s + t.strike * t.contracts * 100, 0);
+  // Open PUTs (cash-secured) + assigned PUTs (stock held at cost basis)
+  // Excludes open CALLs — covered calls don't tie up additional cash
+  const openPutDeployed = open.filter(t => t.type === "PUT").reduce((s, t) => s + t.strike * t.contracts * 100, 0);
+  const assignedDeployed = assigned.filter(t => t.type === "PUT").reduce((s, t) => s + t.strike * t.contracts * 100, 0);
+  const capitalDeployed = openPutDeployed + assignedDeployed;
+  const assignedCount = assigned.filter(t => t.type === "PUT").length;
   const rocPct = capitalBase > 0 ? (realizedPnl / capitalBase) * 100 : 0;
   const taxLiability = realizedPnl > 0 ? realizedPnl * (taxRate / 100) : 0;
   const afterTaxPnl = realizedPnl - taxLiability;
@@ -158,7 +164,7 @@ function computeStats(trades, capitalBase, taxRate) {
     }
   }
 
-  return { totalPremium, realizedPnl, capitalDeployed, openCount: open.length, rocPct, annualizedRoc, taxLiability, afterTaxPnl };
+  return { totalPremium, realizedPnl, capitalDeployed, openCount: open.length, assignedCount, rocPct, annualizedRoc, taxLiability, afterTaxPnl };
 }
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -569,7 +575,7 @@ export default function App() {
             <StatCard label="After-Tax P&L" value={`${stats.afterTaxPnl >= 0 ? "+" : ""}$${stats.afterTaxPnl.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub="net profit" color={stats.afterTaxPnl >= 0 ? G.accent : G.red} top={G.accent} />
             <StatCard label="Return on Capital" value={`${stats.rocPct >= 0 ? "+" : ""}${stats.rocPct.toFixed(2)}%`} sub={`on $${capital.toLocaleString()} base`} color={stats.rocPct >= 0 ? G.accent : G.red} top={G.blue} />
             <StatCard label="Annualized ROC" value={`${stats.annualizedRoc >= 0 ? "+" : ""}${stats.annualizedRoc.toFixed(1)}%`} sub="projected / yr" color={stats.annualizedRoc >= 0 ? G.accent : G.red} top={G.blue} />
-            <StatCard label="Capital Deployed" value={`$${(stats.capitalDeployed/1000).toFixed(1)}k`} sub={`${stats.openCount} open legs`} color={G.amber} top={G.amber} />
+            <StatCard label="Capital Deployed" value={`$${(stats.capitalDeployed/1000).toFixed(1)}k`} sub={`${trades.filter(t=>t.type==="PUT"&&t.status==="open").length} puts · ${stats.assignedCount} assigned`} color={G.amber} top={G.amber} />
             <StatCard label="Open Positions" value={stats.openCount} sub={`${trades.filter(t=>t.type==="PUT"&&t.status==="open").length}P · ${trades.filter(t=>t.type==="CALL"&&t.status==="open").length}C`} color={G.blue} top={G.blue} />
           </div>
 
