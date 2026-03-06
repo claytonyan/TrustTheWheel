@@ -390,7 +390,7 @@ function ImportHistoryModal({ imports, onClose }) {
 }
 
 // ─── Assigned Stock Modal ───────────────────────────────────────────────────
-function AssignedStockModal({ trades, onClose }) {
+function AssignedStockModal({ trades, onMarkSold, onClose }) {
   const [prices, setPrices] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -417,63 +417,80 @@ function AssignedStockModal({ trades, onClose }) {
     .reduce((s, t) => s + prices[t.ticker] * t.heldContracts * 100, 0);
   const allPricesLoaded = !loading && trades.every(t => prices[t.ticker] != null);
 
+  const fmtDate = (d) => {
+    if (!d) return "—";
+    const dt = new Date(d);
+    return isNaN(dt) ? d : dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+  };
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
-      <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 10, width: 640, maxHeight: "80vh", overflow: "hidden", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 10, width: 780, maxHeight: "80vh", overflow: "hidden", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: G.amber }}>ASSIGNED STOCK POSITIONS</div>
-            <div style={{ fontFamily: mono, fontSize: 9.5, color: G.muted, marginTop: 2 }}>currently counting toward capital deployed</div>
+            <div style={{ fontFamily: mono, fontSize: 9.5, color: G.muted, marginTop: 2 }}>currently counting toward capital deployed · mark as sold to remove</div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: G.muted, fontSize: 20, cursor: "pointer", padding: "0 4px", lineHeight: 1 }}>×</button>
         </div>
 
         {/* Table */}
         <div style={{ overflowY: "auto", flex: 1 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                {["Ticker", "Shares", "Cost / Share", "Cost Basis", "Current Price", "Mkt Value", "Unrealized"].map(h => (
-                  <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: G.muted, fontFamily: mono, fontWeight: 500, borderBottom: `1px solid ${G.border}`, background: G.bg, whiteSpace: "nowrap" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {trades.map(t => {
-                const shares = t.heldContracts * 100;
-                const costBasis = t.strike * shares;
-                const currentPrice = prices[t.ticker] ?? null;
-                const mktValue = currentPrice != null ? currentPrice * shares : null;
-                const unrealized = mktValue != null ? mktValue - costBasis : null;
-                const td = (children, extra = {}) => (
-                  <td style={{ padding: "11px 14px", borderBottom: `1px solid ${G.border}`, fontFamily: mono, fontSize: 12, whiteSpace: "nowrap", ...extra }}>{children}</td>
-                );
-                return (
-                  <tr key={t.id} className="trow">
-                    {td(<span style={{ fontWeight: 700, color: G.text }}>{t.ticker}</span>)}
-                    {td(shares.toLocaleString(), { color: G.muted })}
-                    {td(`$${t.strike.toFixed(2)}`, { color: G.text })}
-                    {td(`$${costBasis.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, { color: G.amber })}
-                    {td(
-                      loading
-                        ? <span style={{ color: G.muted, opacity: 0.5 }}>…</span>
-                        : currentPrice != null ? `$${currentPrice.toFixed(2)}` : <span style={{ color: G.muted }}>—</span>,
-                      { color: G.text }
-                    )}
-                    {td(mktValue != null ? `$${mktValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: G.muted }}>—</span>, { color: G.text })}
-                    {td(
-                      unrealized != null
-                        ? `${unrealized >= 0 ? "+" : ""}$${unrealized.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : <span style={{ color: G.muted }}>—</span>,
-                      { color: unrealized == null ? G.muted : unrealized >= 0 ? G.accent : G.red }
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {trades.length === 0
+            ? <div style={{ padding: "40px 20px", textAlign: "center", color: G.muted, fontFamily: mono, fontSize: 11 }}>No assigned positions currently counted</div>
+            : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {["Ticker", "Assigned On", "Shares", "Cost / Share", "Cost Basis", "Current Price", "Mkt Value", "Unrealized", ""].map(h => (
+                    <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: G.muted, fontFamily: mono, fontWeight: 500, borderBottom: `1px solid ${G.border}`, background: G.bg, whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {trades.map(t => {
+                  const shares = t.heldContracts * 100;
+                  const costBasis = t.strike * shares;
+                  const currentPrice = prices[t.ticker] ?? null;
+                  const mktValue = currentPrice != null ? currentPrice * shares : null;
+                  const unrealized = mktValue != null ? mktValue - costBasis : null;
+                  const td = (children, extra = {}) => (
+                    <td style={{ padding: "11px 14px", borderBottom: `1px solid ${G.border}`, fontFamily: mono, fontSize: 12, whiteSpace: "nowrap", ...extra }}>{children}</td>
+                  );
+                  return (
+                    <tr key={t.id} className="trow">
+                      {td(<span style={{ fontWeight: 700, color: G.text }}>{t.ticker}</span>)}
+                      {td(fmtDate(t.closeDate), { color: G.muted, fontSize: 11 })}
+                      {td(shares.toLocaleString(), { color: G.muted })}
+                      {td(`$${t.strike.toFixed(2)}`, { color: G.text })}
+                      {td(`$${costBasis.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, { color: G.amber })}
+                      {td(
+                        loading
+                          ? <span style={{ color: G.muted, opacity: 0.5 }}>…</span>
+                          : currentPrice != null ? `$${currentPrice.toFixed(2)}` : <span style={{ color: G.muted }}>—</span>,
+                        { color: G.text }
+                      )}
+                      {td(mktValue != null ? `$${mktValue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : <span style={{ color: G.muted }}>—</span>, { color: G.text })}
+                      {td(
+                        unrealized != null
+                          ? `${unrealized >= 0 ? "+" : ""}$${unrealized.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                          : <span style={{ color: G.muted }}>—</span>,
+                        { color: unrealized == null ? G.muted : unrealized >= 0 ? G.accent : G.red }
+                      )}
+                      <td style={{ padding: "11px 14px", borderBottom: `1px solid ${G.border}`, whiteSpace: "nowrap" }}>
+                        <button
+                          onClick={() => onMarkSold(t.id, true)}
+                          style={{ background: "none", border: `1px solid #2a1a00`, color: G.amber, padding: "3px 9px", borderRadius: 4, fontSize: 10, fontFamily: mono, cursor: "pointer" }}
+                        >sold</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Footer totals */}
@@ -816,7 +833,7 @@ export default function App() {
 
       {closing && <CloseModal trade={closing} onClose={() => setClosing(null)} onSave={closeTrade} />}
       {viewImports && <ImportHistoryModal imports={imports} onClose={() => setViewImports(false)} />}
-      {showAssignedModal && <AssignedStockModal trades={stats.assignedTrades} onClose={() => setShowAssignedModal(false)} />}
+      {showAssignedModal && <AssignedStockModal trades={stats.assignedTrades} onMarkSold={markStockSold} onClose={() => setShowAssignedModal(false)} />}
     </>
   );
 }
