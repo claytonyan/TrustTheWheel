@@ -420,7 +420,7 @@ export default function App() {
           tradeCount: imported.length,
           closerCount: closers.length,
         }]);
-        showToast(`Imported ${imported.length} trade${imported.length !== 1 ? "s" : ""}${closers.length ? `, updated ${closers.length} existing` : ""}`);
+        showToast(`✓ Upload successful · ${imported.length} trade${imported.length !== 1 ? "s" : ""} imported${closers.length ? `, ${closers.length} updated` : ""}`);
       } catch (err) {
         showToast(`Parse error: ${err.message}`, false);
       }
@@ -512,9 +512,11 @@ export default function App() {
               </div>
             </div>
             <div style={{ width: 1, height: 16, background: G.border }} />
-            <button onClick={() => setViewImports(true)}
-              style={{ background: "#0a1a2a", border: `1px solid ${G.border}`, color: G.muted, padding: "5px 12px", borderRadius: 5, fontSize: 9.5, fontFamily: mono, cursor: "pointer", letterSpacing: "0.06em" }}
-            >VIEW IMPORTED {imports.length > 0 && <span style={{ background: G.border, color: G.text, borderRadius: 3, padding: "1px 5px", marginLeft: 4, fontSize: 9 }}>{imports.length}</span>}</button>
+            {imports.length > 0 && (
+              <button onClick={() => setViewImports(true)}
+                style={{ background: "#0a1a2a", border: `1px solid ${G.border}`, color: G.muted, padding: "5px 12px", borderRadius: 5, fontSize: 9.5, fontFamily: mono, cursor: "pointer", letterSpacing: "0.06em" }}
+              >VIEW IMPORTED <span style={{ background: G.border, color: G.text, borderRadius: 3, padding: "1px 5px", marginLeft: 4, fontSize: 9 }}>{imports.length}</span></button>
+            )}
             <input ref={csvInputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={e => { handleCSVFile(e.target.files[0]); e.target.value = ""; }} />
             <button onClick={() => csvInputRef.current.click()}
               style={{ background: "#0a1a2a", border: `1px solid ${G.blue}50`, color: G.blue, padding: "5px 12px", borderRadius: 5, fontSize: 9.5, fontFamily: mono, cursor: "pointer", letterSpacing: "0.06em" }}
