@@ -324,6 +324,7 @@ export default function App() {
             </div>
             <div style={{ width: 1, height: 14, background: G.border }} />
             <div style={{ fontSize: 10, color: G.muted, fontFamily: mono, letterSpacing: "0.06em" }}>Options Wheel Tracker</div>
+            <div style={{ fontSize: 9, color: G.border, fontFamily: mono }}>v{__APP_VERSION__}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
