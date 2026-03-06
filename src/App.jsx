@@ -142,11 +142,10 @@ function computeStats(trades, capitalBase, taxRate) {
   const totalPremium = trades.reduce((s, t) => s + (t.premiumCollected || 0), 0);
   const realizedPnl = closed.reduce((s, t) => s + (t.realizedPnl || 0), 0);
   const capitalDeployed = open.reduce((s, t) => s + t.strike * t.contracts * 100, 0);
-  const winRate = closed.length > 0 ? (closed.filter(t => (t.realizedPnl || 0) > 0).length / closed.length) * 100 : 0;
   const rocPct = capitalBase > 0 ? (realizedPnl / capitalBase) * 100 : 0;
   const taxLiability = realizedPnl > 0 ? realizedPnl * (taxRate / 100) : 0;
   const afterTaxPnl = realizedPnl - taxLiability;
-  return { totalPremium, realizedPnl, capitalDeployed, openCount: open.length, winRate, rocPct, taxLiability, afterTaxPnl };
+  return { totalPremium, realizedPnl, capitalDeployed, openCount: open.length, rocPct, taxLiability, afterTaxPnl };
 }
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -432,9 +431,10 @@ export default function App() {
         select option { background: ${G.surface}; color: ${G.text}; }
         .trow:hover td { background: #0c1520 !important; }
         input[type=number]::-webkit-inner-spin-button { opacity: 0.3; }
-        .stats-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px; margin-bottom: 26px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 26px; }
         .body-grid { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
         @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
+        @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
         @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .body-grid { grid-template-columns: 1fr; } }
       `}</style>
       <div style={{ width: "100%", minHeight: "100vh", background: G.bg, fontFamily: sans, color: G.text }}>
@@ -504,7 +504,6 @@ export default function App() {
             <StatCard label="After-Tax P&L" value={`${stats.afterTaxPnl >= 0 ? "+" : ""}$${stats.afterTaxPnl.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub="net profit" color={stats.afterTaxPnl >= 0 ? G.accent : G.red} top={G.accent} />
             <StatCard label="Return on Capital" value={`${stats.rocPct >= 0 ? "+" : ""}${stats.rocPct.toFixed(2)}%`} sub={`on $${capital.toLocaleString()} base`} color={stats.rocPct >= 0 ? G.accent : G.red} top={G.blue} />
             <StatCard label="Capital Deployed" value={`$${(stats.capitalDeployed/1000).toFixed(1)}k`} sub={`${stats.openCount} open legs`} color={G.amber} top={G.amber} />
-            <StatCard label="Win Rate" value={`${stats.winRate.toFixed(0)}%`} sub="of closed trades" color={stats.winRate >= 70 ? G.accent : G.amber} top={G.purple} />
             <StatCard label="Open Positions" value={stats.openCount} sub={`${trades.filter(t=>t.type==="PUT"&&t.status==="open").length}P · ${trades.filter(t=>t.type==="CALL"&&t.status==="open").length}C`} color={G.blue} top={G.blue} />
           </div>
 
