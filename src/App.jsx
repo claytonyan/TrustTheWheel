@@ -331,22 +331,6 @@ export default function App() {
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  const handleCSVFile = useCallback((file) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const { trades: imported, closers, errors } = parseFidelityCSV(e.target.result);
-        if (errors.length && !imported.length && !closers.length) { showToast(errors[0], false); return; }
-        importTrades(imported, closers);
-        showToast(`Imported ${imported.length} trade${imported.length !== 1 ? "s" : ""}${closers.length ? `, updated ${closers.length} existing` : ""}`);
-      } catch (err) {
-        showToast(`Parse error: ${err.message}`, false);
-      }
-    };
-    reader.readAsText(file);
-  }, [importTrades, showToast]);
-
   const tradeKey = (t) => {
     const yy = t.expiry?.slice(2,4) ?? "";
     const mm = t.expiry?.slice(5,7) ?? "";
@@ -381,6 +365,22 @@ export default function App() {
   }), []);
   const closeTrade = useCallback(u => { setTrades(p => p.map(t => t.id === u.id ? u : t)); setClosing(null); }, []);
   const deleteTrade = useCallback(id => setTrades(p => p.filter(t => t.id !== id)), []);
+
+  const handleCSVFile = useCallback((file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const { trades: imported, closers, errors } = parseFidelityCSV(e.target.result);
+        if (errors.length && !imported.length && !closers.length) { showToast(errors[0], false); return; }
+        importTrades(imported, closers);
+        showToast(`Imported ${imported.length} trade${imported.length !== 1 ? "s" : ""}${closers.length ? `, updated ${closers.length} existing` : ""}`);
+      } catch (err) {
+        showToast(`Parse error: ${err.message}`, false);
+      }
+    };
+    reader.readAsText(file);
+  }, [importTrades, showToast]);
 
   const stats = useMemo(() => computeStats(trades, capital, taxRate), [trades, capital, taxRate]);
   const filtered = useMemo(() => {
