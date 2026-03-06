@@ -41,7 +41,8 @@ function parseFidelityCSV(text) {
     const qty = parseFloat(col(row, "quantity")) || 0;
     const amount = parseFloat(col(row, "amount").replace(/[$,]/g, "")) || 0;
     const dateRaw = col(row, "run date") || col(row, "date");
-    const date = dateRaw ? new Date(dateRaw).toISOString().split("T")[0] : "";
+    const parsedDate = dateRaw ? new Date(dateRaw) : null;
+    const date = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toISOString().split("T")[0] : "";
 
     if (!symbol || !action) continue;
     if (!action.includes("sold opening transaction")) continue;
