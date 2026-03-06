@@ -140,18 +140,36 @@ function daysUntil(dateStr) {
 function computeStats(trades, capitalBase, taxRate) {
   const open = trades.filter(t => t.status === "open");
   const closed = trades.filter(t => t.status !== "open");
-  const assigned = trades.filter(t => t.status === "assigned");
   const totalPremium = trades.reduce((s, t) => s + (t.premiumCollected || 0), 0);
   const realizedPnl = closed.reduce((s, t) => s + (t.realizedPnl || 0), 0);
+
   // Open PUTs: cash reserved (cash-secured puts)
   const openPutDeployed = open.filter(t => t.type === "PUT").reduce((s, t) => s + t.strike * t.contracts * 100, 0);
-  // Assigned PUTs: stock still being held, proxied by whether there's an active CALL for that ticker
-  // (when stock gets called away the CC closes, so no open CALL means stock is gone)
-  const openCallTickers = new Set(open.filter(t => t.type === "CALL").map(t => t.ticker));
-  const assignedStillHeld = assigned.filter(t => t.type === "PUT" && openCallTickers.has(t.ticker));
-  const assignedDeployed = assignedStillHeld.reduce((s, t) => s + t.strike * t.contracts * 100, 0);
+
+  // Assigned PUTs: stock held at cost basis
+  // A: Auto-net against assigned CALLs (stock called away via CC assignment), oldest PUT first
+  // B: Manual stockSold flag — user explicitly marked stock as sold, skip entirely
+  const assignedCallContractsByTicker = {};
+  for (const t of trades.filter(t => t.type === "CALL" && t.status === "assigned")) {
+    assignedCallContractsByTicker[t.ticker] = (assignedCallContractsByTicker[t.ticker] || 0) + t.contracts;
+  }
+  const remainingCallContracts = { ...assignedCallContractsByTicker };
+  const assignedPuts = trades
+    .filter(t => t.type === "PUT" && t.status === "assigned" && !t.stockSold)
+    .sort((a, b) => new Date(a.closeDate || a.openDate) - new Date(b.closeDate || b.openDate));
+  let assignedDeployed = 0;
+  let assignedCount = 0;
+  for (const t of assignedPuts) {
+    const calledAway = Math.min(t.contracts, remainingCallContracts[t.ticker] || 0);
+    remainingCallContracts[t.ticker] = (remainingCallContracts[t.ticker] || 0) - calledAway;
+    const stillHeld = t.contracts - calledAway;
+    if (stillHeld > 0) {
+      assignedDeployed += t.strike * stillHeld * 100;
+      assignedCount++;
+    }
+  }
+
   const capitalDeployed = openPutDeployed + assignedDeployed;
-  const assignedCount = assignedStillHeld.length;
   const rocPct = capitalBase > 0 ? (realizedPnl / capitalBase) * 100 : 0;
   const taxLiability = realizedPnl > 0 ? realizedPnl * (taxRate / 100) : 0;
   const afterTaxPnl = realizedPnl - taxLiability;
@@ -425,6 +443,7 @@ export default function App() {
   }), []);
   const closeTrade = useCallback(u => { setTrades(p => p.map(t => t.id === u.id ? u : t)); setClosing(null); }, []);
   const deleteTrade = useCallback(id => setTrades(p => p.filter(t => t.id !== id)), []);
+  const markStockSold = useCallback((id, sold) => setTrades(p => p.map(t => t.id === id ? { ...t, stockSold: sold } : t)), []);
 
   const handleCSVFile = useCallback((file) => {
     if (!file) return;
@@ -629,9 +648,14 @@ export default function App() {
                           {td(pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`, { color: pnl == null ? G.muted : pnl >= 0 ? G.accent : G.red })}
                           {td(statusBadge(t.status))}
                           <td style={{ padding: "10px 14px", borderBottom: `1px solid #0c1520`, whiteSpace: "nowrap" }}>
-                            <div style={{ display: "flex", gap: 6 }}>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                               {t.status === "open" && (
                                 <button onClick={() => setClosing(t)} style={{ background: "none", border: `1px solid #1a2a3a`, color: G.blue, padding: "3px 8px", borderRadius: 4, fontSize: 10, fontFamily: mono, cursor: "pointer" }}>close</button>
+                              )}
+                              {t.status === "assigned" && t.type === "PUT" && (
+                                t.stockSold
+                                  ? <button onClick={() => markStockSold(t.id, false)} style={{ background: "none", border: `1px solid #1a2a1a`, color: G.muted, padding: "3px 8px", borderRadius: 4, fontSize: 10, fontFamily: mono, cursor: "pointer" }}>undo</button>
+                                  : <button onClick={() => markStockSold(t.id, true)} style={{ background: "none", border: `1px solid #2a1a00`, color: G.amber, padding: "3px 8px", borderRadius: 4, fontSize: 10, fontFamily: mono, cursor: "pointer" }}>sold</button>
                               )}
                               <button onClick={() => deleteTrade(t.id)} style={{ background: "none", border: `1px solid #2a1414`, color: G.red, padding: "3px 7px", borderRadius: 4, fontSize: 10, fontFamily: mono, cursor: "pointer" }}>×</button>
                             </div>
