@@ -103,10 +103,24 @@ function parseFidelityCSV(text) {
     if (status === "closed") trade.buybackPremium = trade.contracts > 0 ? buyback / trade.contracts / 100 : 0;
   }
 
+  // Third pass: auto-expire any still-open trades whose expiry date has passed
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (const trade of opens.values()) {
+    if (trade.status === "open" && trade.expiry) {
+      const expDate = new Date(trade.expiry);
+      if (expDate < today) {
+        trade.status = "expired";
+        trade.closeDate = trade.expiry;
+        trade.realizedPnl = trade.premiumCollected;
+      }
+    }
+  }
+
   const trades = [...opens.values()];
   const errors = [];
-  if (trades.length === 0) errors.push("No options trades found. Export Account Activity (not Positions) from Fidelity.");
-  return { trades, errors };
+  if (trades.length === 0 && closers.length === 0) errors.push("No options trades found. Export Account Activity (not Positions) from Fidelity.");
+  return { trades, closers, errors };
 }
 
 function formatExpiry(d) {
@@ -153,10 +167,10 @@ function DropZone({ onImport }) {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const { trades, errors } = parseFidelityCSV(e.target.result);
-        if (errors.length && !trades.length) { setMsg({ ok: false, text: errors[0] }); return; }
-        onImport(trades);
-        setMsg({ ok: true, text: `Imported ${trades.length} option trade${trades.length !== 1 ? "s" : ""}` });
+        const { trades, closers, errors } = parseFidelityCSV(e.target.result);
+        if (errors.length && !trades.length && !closers.length) { setMsg({ ok: false, text: errors[0] }); return; }
+        onImport(trades, closers);
+        setMsg({ ok: true, text: `Imported ${trades.length} trade${trades.length !== 1 ? "s" : ""}${closers.length ? `, updated ${closers.length} existing` : ""}` });
       } catch (err) {
         setMsg({ ok: false, text: `Parse error: ${err.message}` });
       }
@@ -305,8 +319,38 @@ export default function App() {
   useEffect(() => { lsSet(LS_TRADES, trades); }, [trades]);
   useEffect(() => { lsSet(LS_CAPITAL, capital); }, [capital]);
 
+  const tradeKey = (t) => {
+    const yy = t.expiry?.slice(2,4) ?? "";
+    const mm = t.expiry?.slice(5,7) ?? "";
+    const dd = t.expiry?.slice(8,10) ?? "";
+    const cp = t.type === "PUT" ? "P" : "C";
+    return `${t.ticker}${yy}${mm}${dd}${cp}${t.strike}`;
+  };
+
   const addTrade = useCallback(t => setTrades(p => [t, ...p]), []);
-  const importTrades = useCallback(imported => setTrades(p => [...imported, ...p]), []);
+  const importTrades = useCallback((imported, closers = []) => setTrades(prev => {
+    // Build a map of existing open trades by symbol key
+    const existingByKey = new Map(prev.filter(t => t.status === "open").map(t => [tradeKey(t), t]));
+    // Apply closers to existing trades
+    const updatedIds = new Set();
+    const updates = {};
+    for (const { key, status, amount, date } of closers) {
+      const existing = existingByKey.get(key);
+      if (existing) {
+        const buyback = status === "closed" ? amount : 0;
+        updates[existing.id] = {
+          ...existing,
+          status,
+          closeDate: date,
+          realizedPnl: existing.premiumCollected - buyback,
+          ...(status === "closed" ? { buybackPremium: existing.contracts > 0 ? buyback / existing.contracts / 100 : 0 } : {}),
+        };
+        updatedIds.add(existing.id);
+      }
+    }
+    const merged = prev.map(t => updates[t.id] ?? t);
+    return [...imported, ...merged];
+  }), []);
   const closeTrade = useCallback(u => { setTrades(p => p.map(t => t.id === u.id ? u : t)); setClosing(null); }, []);
   const deleteTrade = useCallback(id => setTrades(p => p.filter(t => t.id !== id)), []);
 
