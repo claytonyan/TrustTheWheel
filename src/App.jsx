@@ -143,12 +143,15 @@ function computeStats(trades, capitalBase, taxRate) {
   const assigned = trades.filter(t => t.status === "assigned");
   const totalPremium = trades.reduce((s, t) => s + (t.premiumCollected || 0), 0);
   const realizedPnl = closed.reduce((s, t) => s + (t.realizedPnl || 0), 0);
-  // Open PUTs (cash-secured) + assigned PUTs (stock held at cost basis)
-  // Excludes open CALLs — covered calls don't tie up additional cash
+  // Open PUTs: cash reserved (cash-secured puts)
   const openPutDeployed = open.filter(t => t.type === "PUT").reduce((s, t) => s + t.strike * t.contracts * 100, 0);
-  const assignedDeployed = assigned.filter(t => t.type === "PUT").reduce((s, t) => s + t.strike * t.contracts * 100, 0);
+  // Assigned PUTs: stock still being held, proxied by whether there's an active CALL for that ticker
+  // (when stock gets called away the CC closes, so no open CALL means stock is gone)
+  const openCallTickers = new Set(open.filter(t => t.type === "CALL").map(t => t.ticker));
+  const assignedStillHeld = assigned.filter(t => t.type === "PUT" && openCallTickers.has(t.ticker));
+  const assignedDeployed = assignedStillHeld.reduce((s, t) => s + t.strike * t.contracts * 100, 0);
   const capitalDeployed = openPutDeployed + assignedDeployed;
-  const assignedCount = assigned.filter(t => t.type === "PUT").length;
+  const assignedCount = assignedStillHeld.length;
   const rocPct = capitalBase > 0 ? (realizedPnl / capitalBase) * 100 : 0;
   const taxLiability = realizedPnl > 0 ? realizedPnl * (taxRate / 100) : 0;
   const afterTaxPnl = realizedPnl - taxLiability;
