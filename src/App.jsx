@@ -16,7 +16,8 @@ function parseFidelityCSV(text) {
 
   const headers = lines[headerIdx].split(",").map(h => h.replace(/"/g, "").trim().toLowerCase());
   const col = (row, name) => {
-    const idx = headers.findIndex(h => h.includes(name));
+    let idx = headers.findIndex(h => h === name);
+    if (idx < 0) idx = headers.findIndex(h => h.includes(name));
     return idx >= 0 ? (row[idx] || "").replace(/"/g, "").trim() : "";
   };
 
@@ -110,10 +111,14 @@ function DropZone({ onImport }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
-      const { trades, errors } = parseFidelityCSV(e.target.result);
-      if (errors.length && !trades.length) { setMsg({ ok: false, text: errors[0] }); return; }
-      onImport(trades);
-      setMsg({ ok: true, text: `Imported ${trades.length} option trade${trades.length !== 1 ? "s" : ""}` });
+      try {
+        const { trades, errors } = parseFidelityCSV(e.target.result);
+        if (errors.length && !trades.length) { setMsg({ ok: false, text: errors[0] }); return; }
+        onImport(trades);
+        setMsg({ ok: true, text: `Imported ${trades.length} option trade${trades.length !== 1 ? "s" : ""}` });
+      } catch (err) {
+        setMsg({ ok: false, text: `Parse error: ${err.message}` });
+      }
     };
     reader.readAsText(file);
   };
