@@ -3,6 +3,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 // ─── localStorage helpers ──────────────────────────────────────────────────
 const LS_TRADES = "wheeldeskv1_trades";
 const LS_CAPITAL = "wheeldeskv1_capital";
+const LS_TAX_RATE = "wheeldeskv1_taxrate";
 const lsGet = (key, fallback) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
 const lsSet = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
 
@@ -135,7 +136,7 @@ function daysUntil(dateStr) {
   return Math.round((new Date(dateStr) - new Date()) / 86400000);
 }
 
-function computeStats(trades, capitalBase) {
+function computeStats(trades, capitalBase, taxRate) {
   const open = trades.filter(t => t.status === "open");
   const closed = trades.filter(t => t.status !== "open");
   const totalPremium = trades.reduce((s, t) => s + (t.premiumCollected || 0), 0);
@@ -143,7 +144,9 @@ function computeStats(trades, capitalBase) {
   const capitalDeployed = open.reduce((s, t) => s + t.strike * t.contracts * 100, 0);
   const winRate = closed.length > 0 ? (closed.filter(t => (t.realizedPnl || 0) > 0).length / closed.length) * 100 : 0;
   const rocPct = capitalBase > 0 ? (realizedPnl / capitalBase) * 100 : 0;
-  return { totalPremium, realizedPnl, capitalDeployed, openCount: open.length, winRate, rocPct };
+  const taxLiability = realizedPnl > 0 ? realizedPnl * (taxRate / 100) : 0;
+  const afterTaxPnl = realizedPnl - taxLiability;
+  return { totalPremium, realizedPnl, capitalDeployed, openCount: open.length, winRate, rocPct, taxLiability, afterTaxPnl };
 }
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -315,9 +318,11 @@ export default function App() {
   const [tab, setTab] = useState("open");
   const [closing, setClosing] = useState(null);
   const [capital, setCapital] = useState(() => lsGet(LS_CAPITAL, 50000));
+  const [taxRate, setTaxRate] = useState(() => lsGet(LS_TAX_RATE, 30));
 
   useEffect(() => { lsSet(LS_TRADES, trades); }, [trades]);
   useEffect(() => { lsSet(LS_CAPITAL, capital); }, [capital]);
+  useEffect(() => { lsSet(LS_TAX_RATE, taxRate); }, [taxRate]);
 
   const tradeKey = (t) => {
     const yy = t.expiry?.slice(2,4) ?? "";
@@ -354,7 +359,7 @@ export default function App() {
   const closeTrade = useCallback(u => { setTrades(p => p.map(t => t.id === u.id ? u : t)); setClosing(null); }, []);
   const deleteTrade = useCallback(id => setTrades(p => p.filter(t => t.id !== id)), []);
 
-  const stats = useMemo(() => computeStats(trades, capital), [trades, capital]);
+  const stats = useMemo(() => computeStats(trades, capital, taxRate), [trades, capital, taxRate]);
   const filtered = useMemo(() => {
     if (tab === "open") return trades.filter(t => t.status === "open");
     if (tab === "closed") return trades.filter(t => t.status !== "open");
@@ -422,6 +427,15 @@ export default function App() {
               <input type="number" value={capital} onChange={e => setCapital(parseFloat(e.target.value) || 0)}
                 style={{ width: 100, background: G.bg, border: `1px solid ${G.border}`, color: G.text, padding: "5px 9px", borderRadius: 5, fontSize: 11, fontFamily: mono, outline: "none" }} />
             </div>
+            <div style={{ width: 1, height: 16, background: G.border }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontSize: 9.5, color: G.muted, fontFamily: mono }}>TAX RATE</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <input type="number" min="0" max="100" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)}
+                  style={{ width: 60, background: G.bg, border: `1px solid ${G.border}`, color: G.text, padding: "5px 9px", borderRadius: 5, fontSize: 11, fontFamily: mono, outline: "none" }} />
+                <div style={{ fontSize: 11, color: G.muted, fontFamily: mono }}>%</div>
+              </div>
+            </div>
             <button
               onClick={() => { if (window.confirm("Clear all trades and reset? This cannot be undone.")) { setTrades([]); lsSet(LS_TRADES, []); } }}
               style={{ background: "none", border: `1px solid #2a1414`, color: "#5a3030", padding: "5px 10px", borderRadius: 5, fontSize: 9.5, fontFamily: mono, cursor: "pointer", letterSpacing: "0.06em" }}
@@ -443,9 +457,11 @@ export default function App() {
           )}
 
           {/* Stats row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 26 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 12, marginBottom: 26 }}>
             <StatCard label="Premium Collected" value={`$${stats.totalPremium.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub={`${trades.length} legs total`} color={G.accent} top={G.accent} />
             <StatCard label="Realized P&L" value={`${stats.realizedPnl >= 0 ? "+" : ""}$${stats.realizedPnl.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub="closed trades" color={stats.realizedPnl >= 0 ? G.accent : G.red} top={G.accent} />
+            <StatCard label="Est. Tax Liability" value={`-$${stats.taxLiability.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub={`at ${taxRate}% rate`} color={G.red} top={G.red} />
+            <StatCard label="After-Tax P&L" value={`${stats.afterTaxPnl >= 0 ? "+" : ""}$${stats.afterTaxPnl.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub="net profit" color={stats.afterTaxPnl >= 0 ? G.accent : G.red} top={G.accent} />
             <StatCard label="Return on Capital" value={`${stats.rocPct >= 0 ? "+" : ""}${stats.rocPct.toFixed(2)}%`} sub={`on $${capital.toLocaleString()} base`} color={stats.rocPct >= 0 ? G.accent : G.red} top={G.blue} />
             <StatCard label="Capital Deployed" value={`$${(stats.capitalDeployed/1000).toFixed(1)}k`} sub={`${stats.openCount} open legs`} color={G.amber} top={G.amber} />
             <StatCard label="Win Rate" value={`${stats.winRate.toFixed(0)}%`} sub="of closed trades" color={stats.winRate >= 70 ? G.accent : G.amber} top={G.purple} />
