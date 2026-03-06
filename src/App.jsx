@@ -159,6 +159,7 @@ function computeStats(trades, capitalBase, taxRate) {
     .sort((a, b) => new Date(a.closeDate || a.openDate) - new Date(b.closeDate || b.openDate));
   let assignedDeployed = 0;
   let assignedCount = 0;
+  const assignedTrades = [];
   for (const t of assignedPuts) {
     const calledAway = Math.min(t.contracts, remainingCallContracts[t.ticker] || 0);
     remainingCallContracts[t.ticker] = (remainingCallContracts[t.ticker] || 0) - calledAway;
@@ -166,6 +167,7 @@ function computeStats(trades, capitalBase, taxRate) {
     if (stillHeld > 0) {
       assignedDeployed += t.strike * stillHeld * 100;
       assignedCount++;
+      assignedTrades.push({ ...t, heldContracts: stillHeld });
     }
   }
 
@@ -185,7 +187,7 @@ function computeStats(trades, capitalBase, taxRate) {
     }
   }
 
-  return { totalPremium, realizedPnl, capitalDeployed, openCount: open.length, assignedCount, rocPct, annualizedRoc, taxLiability, afterTaxPnl };
+  return { totalPremium, realizedPnl, capitalDeployed, openCount: open.length, assignedCount, assignedTrades, rocPct, annualizedRoc, taxLiability, afterTaxPnl };
 }
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -387,6 +389,116 @@ function ImportHistoryModal({ imports, onClose }) {
   );
 }
 
+// ─── Assigned Stock Modal ───────────────────────────────────────────────────
+function AssignedStockModal({ trades, onClose }) {
+  const [prices, setPrices] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const tickers = [...new Set(trades.map(t => t.ticker))];
+    if (tickers.length === 0) { setLoading(false); return; }
+    Promise.all(
+      tickers.map(ticker =>
+        fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`)
+          .then(r => r.json())
+          .then(d => [ticker, d?.chart?.result?.[0]?.meta?.regularMarketPrice ?? null])
+          .catch(() => [ticker, null])
+      )
+    ).then(results => {
+      setPrices(Object.fromEntries(results));
+      setLoading(false);
+    });
+  }, []);
+
+  const totalCostBasis = trades.reduce((s, t) => s + t.strike * t.heldContracts * 100, 0);
+  const priceLoadedTickers = Object.keys(prices).filter(k => prices[k] != null);
+  const totalCurrentValue = trades
+    .filter(t => priceLoadedTickers.includes(t.ticker))
+    .reduce((s, t) => s + prices[t.ticker] * t.heldContracts * 100, 0);
+  const allPricesLoaded = !loading && trades.every(t => prices[t.ticker] != null);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 10, width: 640, maxHeight: "80vh", overflow: "hidden", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: G.amber }}>ASSIGNED STOCK POSITIONS</div>
+            <div style={{ fontFamily: mono, fontSize: 9.5, color: G.muted, marginTop: 2 }}>currently counting toward capital deployed</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: G.muted, fontSize: 20, cursor: "pointer", padding: "0 4px", lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Table */}
+        <div style={{ overflowY: "auto", flex: 1 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                {["Ticker", "Shares", "Cost / Share", "Cost Basis", "Current Price", "Mkt Value", "Unrealized"].map(h => (
+                  <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: G.muted, fontFamily: mono, fontWeight: 500, borderBottom: `1px solid ${G.border}`, background: G.bg, whiteSpace: "nowrap" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {trades.map(t => {
+                const shares = t.heldContracts * 100;
+                const costBasis = t.strike * shares;
+                const currentPrice = prices[t.ticker] ?? null;
+                const mktValue = currentPrice != null ? currentPrice * shares : null;
+                const unrealized = mktValue != null ? mktValue - costBasis : null;
+                const td = (children, extra = {}) => (
+                  <td style={{ padding: "11px 14px", borderBottom: `1px solid ${G.border}`, fontFamily: mono, fontSize: 12, whiteSpace: "nowrap", ...extra }}>{children}</td>
+                );
+                return (
+                  <tr key={t.id} className="trow">
+                    {td(<span style={{ fontWeight: 700, color: G.text }}>{t.ticker}</span>)}
+                    {td(shares.toLocaleString(), { color: G.muted })}
+                    {td(`$${t.strike.toFixed(2)}`, { color: G.text })}
+                    {td(`$${costBasis.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, { color: G.amber })}
+                    {td(
+                      loading
+                        ? <span style={{ color: G.muted, opacity: 0.5 }}>…</span>
+                        : currentPrice != null ? `$${currentPrice.toFixed(2)}` : <span style={{ color: G.muted }}>—</span>,
+                      { color: G.text }
+                    )}
+                    {td(mktValue != null ? `$${mktValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: G.muted }}>—</span>, { color: G.text })}
+                    {td(
+                      unrealized != null
+                        ? `${unrealized >= 0 ? "+" : ""}$${unrealized.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : <span style={{ color: G.muted }}>—</span>,
+                      { color: unrealized == null ? G.muted : unrealized >= 0 ? G.accent : G.red }
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer totals */}
+        <div style={{ background: G.bg, borderTop: `1px solid ${G.border}`, padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontFamily: mono, fontSize: 10, color: G.muted }}>
+            {trades.length} position{trades.length !== 1 ? "s" : ""} · {trades.reduce((s, t) => s + t.heldContracts * 100, 0).toLocaleString()} shares total
+          </div>
+          <div style={{ display: "flex", gap: 24 }}>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: mono, fontSize: 9, color: G.muted, letterSpacing: "0.08em", marginBottom: 2 }}>COST BASIS</div>
+              <div style={{ fontFamily: mono, fontSize: 13, color: G.amber, fontWeight: 600 }}>${totalCostBasis.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+            </div>
+            {allPricesLoaded && (
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontFamily: mono, fontSize: 9, color: G.muted, letterSpacing: "0.08em", marginBottom: 2 }}>MKT VALUE</div>
+                <div style={{ fontFamily: mono, fontSize: 13, color: G.text, fontWeight: 600 }}>${totalCurrentValue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── App ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [trades, setTrades] = useState(() => lsGet(LS_TRADES, []));
@@ -396,6 +508,7 @@ export default function App() {
   const [taxRate, setTaxRate] = useState(() => lsGet(LS_TAX_RATE, 30));
   const [imports, setImports] = useState(() => lsGet(LS_IMPORTS, []));
   const [viewImports, setViewImports] = useState(false);
+  const [showAssignedModal, setShowAssignedModal] = useState(false);
   const [toast, setToast] = useState(null);
   const csvInputRef = useRef();
 
@@ -597,7 +710,7 @@ export default function App() {
             <StatCard label="After-Tax P&L" value={`${stats.afterTaxPnl >= 0 ? "+" : ""}$${stats.afterTaxPnl.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub="net profit" color={stats.afterTaxPnl >= 0 ? G.accent : G.red} top={G.accent} />
             <StatCard label="Return on Capital" value={`${stats.rocPct >= 0 ? "+" : ""}${stats.rocPct.toFixed(2)}%`} sub={`on $${capital.toLocaleString()} base`} color={stats.rocPct >= 0 ? G.accent : G.red} top={G.blue} />
             <StatCard label="Annualized ROC" value={`${stats.annualizedRoc >= 0 ? "+" : ""}${stats.annualizedRoc.toFixed(1)}%`} sub="projected / yr" color={stats.annualizedRoc >= 0 ? G.accent : G.red} top={G.blue} />
-            <StatCard label="Capital Deployed" value={`$${(stats.capitalDeployed/1000).toFixed(1)}k`} sub={`${trades.filter(t=>t.type==="PUT"&&t.status==="open").length} puts · ${stats.assignedCount} assigned`} color={G.amber} top={G.amber} />
+            <StatCard label="Capital Deployed" value={`$${(stats.capitalDeployed/1000).toFixed(1)}k`} sub={<span>{trades.filter(t=>t.type==="PUT"&&t.status==="open").length} puts · {stats.assignedCount > 0 ? <span onClick={() => setShowAssignedModal(true)} style={{ cursor: "pointer", borderBottom: `1px dotted ${G.amber}80`, color: G.amber }}>{stats.assignedCount} assigned ↗</span> : "0 assigned"}</span>} color={G.amber} top={G.amber} />
             <StatCard label="Open Positions" value={stats.openCount} sub={`${trades.filter(t=>t.type==="PUT"&&t.status==="open").length}P · ${trades.filter(t=>t.type==="CALL"&&t.status==="open").length}C`} color={G.blue} top={G.blue} />
           </div>
 
@@ -703,6 +816,7 @@ export default function App() {
 
       {closing && <CloseModal trade={closing} onClose={() => setClosing(null)} onSave={closeTrade} />}
       {viewImports && <ImportHistoryModal imports={imports} onClose={() => setViewImports(false)} />}
+      {showAssignedModal && <AssignedStockModal trades={stats.assignedTrades} onClose={() => setShowAssignedModal(false)} />}
     </>
   );
 }
