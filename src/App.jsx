@@ -319,10 +319,33 @@ export default function App() {
   const [closing, setClosing] = useState(null);
   const [capital, setCapital] = useState(() => lsGet(LS_CAPITAL, 50000));
   const [taxRate, setTaxRate] = useState(() => lsGet(LS_TAX_RATE, 30));
+  const [toast, setToast] = useState(null);
+  const csvInputRef = useRef();
 
   useEffect(() => { lsSet(LS_TRADES, trades); }, [trades]);
   useEffect(() => { lsSet(LS_CAPITAL, capital); }, [capital]);
   useEffect(() => { lsSet(LS_TAX_RATE, taxRate); }, [taxRate]);
+
+  const showToast = useCallback((msg, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  const handleCSVFile = useCallback((file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const { trades: imported, closers, errors } = parseFidelityCSV(e.target.result);
+        if (errors.length && !imported.length && !closers.length) { showToast(errors[0], false); return; }
+        importTrades(imported, closers);
+        showToast(`Imported ${imported.length} trade${imported.length !== 1 ? "s" : ""}${closers.length ? `, updated ${closers.length} existing` : ""}`);
+      } catch (err) {
+        showToast(`Parse error: ${err.message}`, false);
+      }
+    };
+    reader.readAsText(file);
+  }, [importTrades, showToast]);
 
   const tradeKey = (t) => {
     const yy = t.expiry?.slice(2,4) ?? "";
@@ -408,6 +431,10 @@ export default function App() {
         select option { background: ${G.surface}; color: ${G.text}; }
         .trow:hover td { background: #0c1520 !important; }
         input[type=number]::-webkit-inner-spin-button { opacity: 0.3; }
+        .stats-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px; margin-bottom: 26px; }
+        .body-grid { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
+        @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
+        @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .body-grid { grid-template-columns: 1fr; } }
       `}</style>
       <div style={{ minHeight: "100vh", background: G.bg, fontFamily: sans, color: G.text }}>
 
@@ -436,6 +463,11 @@ export default function App() {
                 <div style={{ fontSize: 11, color: G.muted, fontFamily: mono }}>%</div>
               </div>
             </div>
+            <div style={{ width: 1, height: 16, background: G.border }} />
+            <input ref={csvInputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={e => { handleCSVFile(e.target.files[0]); e.target.value = ""; }} />
+            <button onClick={() => csvInputRef.current.click()}
+              style={{ background: "#0a1a2a", border: `1px solid ${G.blue}50`, color: G.blue, padding: "5px 12px", borderRadius: 5, fontSize: 9.5, fontFamily: mono, cursor: "pointer", letterSpacing: "0.06em" }}
+            >↑ IMPORT CSV</button>
             <button
               onClick={() => { if (window.confirm("Clear all trades and reset? This cannot be undone.")) { setTrades([]); lsSet(LS_TRADES, []); } }}
               style={{ background: "none", border: `1px solid #2a1414`, color: "#5a3030", padding: "5px 10px", borderRadius: 5, fontSize: 9.5, fontFamily: mono, cursor: "pointer", letterSpacing: "0.06em" }}
@@ -443,7 +475,14 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{ maxWidth: 1360, margin: "0 auto", padding: "26px 30px" }}>
+        {/* Toast */}
+        {toast && (
+          <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 1000, background: toast.ok ? "#0a2a1a" : "#2a0808", border: `1px solid ${toast.ok ? "#1a3a2a" : "#3a1212"}`, color: toast.ok ? G.accent : G.red, padding: "10px 16px", borderRadius: 7, fontFamily: mono, fontSize: 11, boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
+            {toast.msg}
+          </div>
+        )}
+
+        <div style={{ padding: "26px 30px" }}>
 
           {/* Empty state banner */}
           {trades.length === 0 && (
@@ -451,13 +490,13 @@ export default function App() {
               <div style={{ fontSize: 16 }}>📂</div>
               <div>
                 <div style={{ fontSize: 11, color: G.text, fontWeight: 500 }}>No trades yet</div>
-                <div style={{ fontSize: 10, color: G.muted, marginTop: 2 }}>Import a Fidelity Activity CSV or add a trade manually using the panel on the right.</div>
+                <div style={{ fontSize: 10, color: G.muted, marginTop: 2 }}>Click <strong style={{ color: G.blue }}>↑ IMPORT CSV</strong> in the header to import a Fidelity Activity CSV, or add a trade manually using the panel on the right.</div>
               </div>
             </div>
           )}
 
           {/* Stats row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 12, marginBottom: 26 }}>
+          <div className="stats-grid">
             <StatCard label="Premium Collected" value={`$${stats.totalPremium.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub={`${trades.length} legs total`} color={G.accent} top={G.accent} />
             <StatCard label="Realized P&L" value={`${stats.realizedPnl >= 0 ? "+" : ""}$${stats.realizedPnl.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub="closed trades" color={stats.realizedPnl >= 0 ? G.accent : G.red} top={G.accent} />
             <StatCard label="Est. Tax Liability" value={`-$${stats.taxLiability.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`} sub={`at ${taxRate}% rate`} color={G.red} top={G.red} />
@@ -469,7 +508,7 @@ export default function App() {
           </div>
 
           {/* Body grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: 18 }}>
+          <div className="body-grid">
 
             {/* Table panel */}
             <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 8, overflow: "hidden" }}>
@@ -532,14 +571,6 @@ export default function App() {
 
             {/* Right sidebar */}
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* Import */}
-              <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 8, overflow: "hidden" }}>
-                <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: "11px 18px" }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: G.muted, fontFamily: mono }}>Import Fidelity CSV</div>
-                </div>
-                <DropZone onImport={importTrades} />
-              </div>
-
               {/* Manual add */}
               <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 8, overflow: "hidden" }}>
                 <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: "11px 18px" }}>
