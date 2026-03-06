@@ -43,13 +43,14 @@ function parseFidelityCSV(text) {
     const date = dateRaw ? new Date(dateRaw).toISOString().split("T")[0] : "";
 
     if (!symbol || !action) continue;
+    if (!action.includes("sold opening transaction")) continue;
 
-    const optMatch = symbol.match(/^([A-Z]{1,5})(\d{6})([CP])(\d{8})$/);
+    const optMatch = symbol.replace(/^-/, "").match(/^([A-Z]{1,6})(\d{6})([CP])(\d+(?:\.\d+)?)$/);
     if (!optMatch) continue;
 
-    const [, ticker, expRaw, cpFlag, strikePad] = optMatch;
+    const [, ticker, expRaw, cpFlag, strikeRaw] = optMatch;
     const expiry = `20${expRaw.slice(0,2)}-${expRaw.slice(2,4)}-${expRaw.slice(4,6)}`;
-    const strike = parseFloat(strikePad) / 1000;
+    const strike = parseFloat(strikeRaw);
     const type = cpFlag === "P" ? "PUT" : "CALL";
     const contracts = Math.abs(qty);
     const premiumPerContract = contracts > 0 ? Math.abs(amount) / contracts / 100 : 0;
