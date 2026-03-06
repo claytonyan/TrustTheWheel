@@ -491,9 +491,10 @@ export default function App() {
         .trow:hover td { background: #0c1520 !important; }
         input[type=number]::-webkit-inner-spin-button { opacity: 0.3; }
         .stats-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px; margin-bottom: 26px; }
-        .body-grid { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
+        .body-grid { display: grid; grid-template-columns: 1fr 220px 280px; gap: 18px; }
         @media (max-width: 1400px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
         @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 1100px) { .body-grid { grid-template-columns: 1fr 220px; } }
         @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .body-grid { grid-template-columns: 1fr; } }
       `}</style>
       <div style={{ width: "100%", minHeight: "100vh", background: G.bg, fontFamily: sans, color: G.text }}>
@@ -634,37 +635,34 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right sidebar */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* Manual add */}
-              <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 8, overflow: "hidden" }}>
-                <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: "11px 18px" }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: G.muted, fontFamily: mono }}>Manual Entry</div>
-                </div>
-                <AddForm onAdd={addTrade} />
+            {/* By Ticker */}
+            <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 8, overflow: "hidden", alignSelf: "start" }}>
+              <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: "11px 18px" }}>
+                <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: G.muted, fontFamily: mono }}>By Ticker</div>
               </div>
-
-              {/* Ticker breakdown */}
-              <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 8, overflow: "hidden" }}>
-                <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: "11px 18px" }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: G.muted, fontFamily: mono }}>By Ticker</div>
-                </div>
-                {byTicker.length === 0
-                  ? <div style={{ padding: 24, textAlign: "center", color: G.muted, fontSize: 11, fontFamily: mono }}>No trades yet</div>
-                  : byTicker.map(([ticker, d]) => (
-                    <div key={ticker} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 18px", borderBottom: `1px solid ${G.border}` }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ fontFamily: mono, fontWeight: 600, fontSize: 13, color: G.text }}>{ticker}</div>
-                        {d.open > 0 && <span style={{ fontSize: 9, fontFamily: mono, background: "#0a2018", color: G.accent, padding: "1px 6px", borderRadius: 10 }}>{d.open} open</span>}
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 12, fontFamily: mono, color: G.accent }}>${d.premium.toFixed(2)}</div>
-                        <div style={{ fontSize: 9, fontFamily: mono, color: G.muted }}>collected · {d.count} leg{d.count !== 1 ? "s" : ""}</div>
-                      </div>
+              {byTicker.length === 0
+                ? <div style={{ padding: 24, textAlign: "center", color: G.muted, fontSize: 11, fontFamily: mono }}>No trades yet</div>
+                : byTicker.map(([ticker, d]) => (
+                  <div key={ticker} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 18px", borderBottom: `1px solid ${G.border}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ fontFamily: mono, fontWeight: 600, fontSize: 13, color: G.text }}>{ticker}</div>
+                      {d.open > 0 && <span style={{ fontSize: 9, fontFamily: mono, background: "#0a2018", color: G.accent, padding: "1px 6px", borderRadius: 10 }}>{d.open} open</span>}
                     </div>
-                  ))
-                }
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 12, fontFamily: mono, color: G.accent }}>${d.premium.toFixed(2)}</div>
+                      <div style={{ fontSize: 9, fontFamily: mono, color: G.muted }}>collected · {d.count} leg{d.count !== 1 ? "s" : ""}</div>
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+
+            {/* Manual Entry */}
+            <div style={{ background: G.surface, border: `1px solid ${G.border}`, borderRadius: 8, overflow: "hidden", alignSelf: "start" }}>
+              <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: "11px 18px" }}>
+                <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: G.muted, fontFamily: mono }}>Manual Entry</div>
               </div>
+              <AddForm onAdd={addTrade} />
             </div>
           </div>
         </div>
