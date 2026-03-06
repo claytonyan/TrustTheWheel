@@ -248,19 +248,10 @@ function CloseModal({ trade, onClose, onSave }) {
   );
 }
 
-// ─── Sample data ───────────────────────────────────────────────────────────
-const SEED = [
-  { id:1, ticker:"AAPL", type:"PUT",  strike:175, expiry:"2025-08-15", contracts:2, premiumPerContract:3.20, premiumCollected:640,  openDate:"2025-07-10", status:"open",     realizedPnl:null, notes:"Support level" },
-  { id:2, ticker:"AAPL", type:"PUT",  strike:170, expiry:"2025-07-18", contracts:2, premiumPerContract:2.10, premiumCollected:420,  openDate:"2025-06-20", status:"expired",  realizedPnl:420,  closeDate:"2025-07-18" },
-  { id:3, ticker:"SPY",  type:"PUT",  strike:530, expiry:"2025-08-01", contracts:1, premiumPerContract:5.80, premiumCollected:580,  openDate:"2025-07-05", status:"open",     realizedPnl:null },
-  { id:4, ticker:"MSFT", type:"PUT",  strike:420, expiry:"2025-07-25", contracts:1, premiumPerContract:4.50, premiumCollected:450,  openDate:"2025-07-01", status:"closed",   realizedPnl:330,  closeDate:"2025-07-14", buybackPremium:1.20, notes:"BTC 73% profit" },
-  { id:5, ticker:"MSFT", type:"CALL", strike:435, expiry:"2025-08-15", contracts:1, premiumPerContract:3.90, premiumCollected:390,  openDate:"2025-07-16", status:"open",     realizedPnl:null, notes:"CC after assignment" },
-  { id:6, ticker:"NVDA", type:"PUT",  strike:115, expiry:"2025-07-18", contracts:3, premiumPerContract:2.75, premiumCollected:825,  openDate:"2025-07-02", status:"assigned", realizedPnl:825,  closeDate:"2025-07-18", notes:"Shares acquired" },
-];
 
 // ─── App ───────────────────────────────────────────────────────────────────
 export default function App() {
-  const [trades, setTrades] = useState(() => lsGet(LS_TRADES, SEED));
+  const [trades, setTrades] = useState(() => lsGet(LS_TRADES, []));
   const [tab, setTab] = useState("open");
   const [closing, setClosing] = useState(null);
   const [capital, setCapital] = useState(() => lsGet(LS_CAPITAL, 50000));
@@ -348,6 +339,17 @@ export default function App() {
         </div>
 
         <div style={{ maxWidth: 1360, margin: "0 auto", padding: "26px 30px" }}>
+
+          {/* Empty state banner */}
+          {trades.length === 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#0a1a2a", border: `1px solid ${G.blue}30`, borderLeft: `3px solid ${G.blue}`, borderRadius: 7, padding: "12px 18px", marginBottom: 20, fontFamily: mono }}>
+              <div style={{ fontSize: 16 }}>📂</div>
+              <div>
+                <div style={{ fontSize: 11, color: G.text, fontWeight: 500 }}>No trades yet</div>
+                <div style={{ fontSize: 10, color: G.muted, marginTop: 2 }}>Import a Fidelity Activity CSV or add a trade manually using the panel on the right.</div>
+              </div>
+            </div>
+          )}
 
           {/* Stats row */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 26 }}>
