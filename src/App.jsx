@@ -21,13 +21,13 @@ function parseFidelityCSV(text) {
     return idx >= 0 ? (row[idx] || "").replace(/"/g, "").trim() : "";
   };
 
-  const trades = [];
-  const errors = [];
+  const parseDate = (raw) => {
+    if (!raw) return "";
+    const d = new Date(raw);
+    return !isNaN(d.getTime()) ? d.toISOString().split("T")[0] : "";
+  };
 
-  for (let i = headerIdx + 1; i < lines.length; i++) {
-    const raw = lines[i];
-    if (!raw || raw.startsWith(",,") || raw.toLowerCase().includes("total")) continue;
-
+  const parseRow = (raw) => {
     const row = [];
     let cur = "", inQ = false;
     for (const ch of raw + ",") {
@@ -35,36 +35,76 @@ function parseFidelityCSV(text) {
       else if (ch === "," && !inQ) { row.push(cur.trim()); cur = ""; }
       else cur += ch;
     }
+    return row;
+  };
 
+  const parseOptSymbol = (symbol) => {
+    const m = symbol.replace(/^-/, "").match(/^([A-Z]{1,6})(\d{6})([CP])(\d+(?:\.\d+)?)$/);
+    if (!m) return null;
+    const [, ticker, expRaw, cpFlag, strikeRaw] = m;
+    return {
+      ticker,
+      expiry: `20${expRaw.slice(0,2)}-${expRaw.slice(2,4)}-${expRaw.slice(4,6)}`,
+      type: cpFlag === "P" ? "PUT" : "CALL",
+      strike: parseFloat(strikeRaw),
+      key: symbol.replace(/^-/, ""),
+    };
+  };
+
+  // First pass: collect all option rows
+  const opens = new Map();   // key -> trade object
+  const closers = [];        // closing/expired/assigned rows
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const raw = lines[i];
+    if (!raw || raw.startsWith(",,") || raw.toLowerCase().includes("total")) continue;
+
+    const row = parseRow(raw);
     const action = col(row, "action").toLowerCase();
     const symbol = col(row, "symbol").toUpperCase();
-    const qty = parseFloat(col(row, "quantity")) || 0;
     const amount = parseFloat(col(row, "amount").replace(/[$,]/g, "")) || 0;
-    const dateRaw = col(row, "run date") || col(row, "date");
-    const parsedDate = dateRaw ? new Date(dateRaw) : null;
-    const date = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toISOString().split("T")[0] : "";
+    const date = parseDate(col(row, "run date") || col(row, "date"));
+    const qty = parseFloat(col(row, "quantity")) || 0;
 
     if (!symbol || !action) continue;
-    if (!action.includes("sold opening transaction")) continue;
+    const opt = parseOptSymbol(symbol);
+    if (!opt) continue;
 
-    const optMatch = symbol.replace(/^-/, "").match(/^([A-Z]{1,6})(\d{6})([CP])(\d+(?:\.\d+)?)$/);
-    if (!optMatch) continue;
-
-    const [, ticker, expRaw, cpFlag, strikeRaw] = optMatch;
-    const expiry = `20${expRaw.slice(0,2)}-${expRaw.slice(2,4)}-${expRaw.slice(4,6)}`;
-    const strike = parseFloat(strikeRaw);
-    const type = cpFlag === "P" ? "PUT" : "CALL";
-    const contracts = Math.abs(qty);
-    const premiumPerContract = contracts > 0 ? Math.abs(amount) / contracts / 100 : 0;
-
-    trades.push({
-      id: Date.now() + Math.random(),
-      ticker, type, strike, expiry, contracts, premiumPerContract,
-      premiumCollected: Math.abs(amount),
-      openDate: date, status: "open", realizedPnl: null, closeDate: null, notes: ""
-    });
+    if (action.includes("sold opening transaction")) {
+      const contracts = Math.abs(qty);
+      const premiumPerContract = contracts > 0 ? Math.abs(amount) / contracts / 100 : 0;
+      opens.set(opt.key, {
+        id: Date.now() + Math.random(),
+        ticker: opt.ticker, type: opt.type, strike: opt.strike, expiry: opt.expiry,
+        contracts, premiumPerContract,
+        premiumCollected: Math.abs(amount),
+        openDate: date, status: "open", realizedPnl: null, closeDate: null, notes: ""
+      });
+    } else if (
+      action.includes("bought closing transaction") ||
+      action.startsWith("expired") ||
+      action.startsWith("assigned")
+    ) {
+      let status = "closed";
+      if (action.startsWith("expired")) status = "expired";
+      if (action.startsWith("assigned")) status = "assigned";
+      closers.push({ key: opt.key, status, amount: Math.abs(amount), date });
+    }
   }
 
+  // Second pass: apply closers to matching opens
+  for (const { key, status, amount, date } of closers) {
+    const trade = opens.get(key);
+    if (!trade) continue;
+    const buyback = status === "closed" ? amount : 0;
+    trade.status = status;
+    trade.closeDate = date;
+    trade.realizedPnl = trade.premiumCollected - buyback;
+    if (status === "closed") trade.buybackPremium = trade.contracts > 0 ? buyback / trade.contracts / 100 : 0;
+  }
+
+  const trades = [...opens.values()];
+  const errors = [];
   if (trades.length === 0) errors.push("No options trades found. Export Account Activity (not Positions) from Fidelity.");
   return { trades, errors };
 }
