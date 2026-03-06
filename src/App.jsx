@@ -424,6 +424,7 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body, #root { width: 100%; min-height: 100vh; }
         body { background: ${G.bg}; }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: ${G.bg}; }
@@ -436,10 +437,10 @@ export default function App() {
         @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
         @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .body-grid { grid-template-columns: 1fr; } }
       `}</style>
-      <div style={{ minHeight: "100vh", background: G.bg, fontFamily: sans, color: G.text }}>
+      <div style={{ width: "100%", minHeight: "100vh", background: G.bg, fontFamily: sans, color: G.text }}>
 
         {/* Header */}
-        <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: "0 30px", height: 50, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ background: G.surface, borderBottom: `1px solid ${G.border}`, padding: "0 20px", height: 50, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, letterSpacing: "0.2em", color: G.accent }}>
               WHEEL<span style={{ color: G.blue }}>.</span>DESK
@@ -482,7 +483,7 @@ export default function App() {
           </div>
         )}
 
-        <div style={{ padding: "26px 30px" }}>
+        <div style={{ padding: "20px" }}>
 
           {/* Empty state banner */}
           {trades.length === 0 && (
